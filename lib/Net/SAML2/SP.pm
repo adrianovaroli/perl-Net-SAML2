@@ -315,7 +315,7 @@ sub metadata {
     my $md = ['md' => 'urn:oasis:names:tc:SAML:2.0:metadata'];
     my $ds = ['ds' => 'http://www.w3.org/2000/09/xmldsig#'];
 
-    $x->EntityDescriptor(
+    my $metadata = $x->EntityDescriptor(
         $md,
         {
             entityID => $self->id },
@@ -324,7 +324,8 @@ sub metadata {
             { AuthnRequestsSigned => defined($self->authnreq_signed) ? $self->authnreq_signed : '1',
               WantAssertionsSigned => defined($self->want_assertions_signed) ? $self->want_assertions_signed : '1',
               errorURL => $self->url . $self->error_url,
-              protocolSupportEnumeration => 'urn:oasis:names:tc:SAML:2.0:protocol' },
+              protocolSupportEnumeration => 'urn:oasis:names:tc:SAML:2.0:protocol',
+              ID => '1234'},
             $x->KeyDescriptor(
                 $md,
                 {
@@ -405,6 +406,21 @@ sub metadata {
             ),
         )
     );
+
+    use Net::SAML2::XML::Sig;
+
+    my $signer = Net::SAML2::XML::Sig->new({
+                        key => $self->key,
+                        cert => $self->cert,
+                        sig_hash => 'sha256',
+                        digest_hash => 'sha256',
+                        x509 => 1,
+                });
+
+    # create a signature
+    my $signed = $signer->sign($metadata);
+
+    return $signed;
 }
 
 __PACKAGE__->meta->make_immutable;
