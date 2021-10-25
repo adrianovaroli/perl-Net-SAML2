@@ -54,7 +54,9 @@ has 'slo_urls' => (isa => 'Maybe[HashRef[Str]]', is => 'ro');
 has 'art_urls' => (isa => 'Maybe[HashRef[Str]]', is => 'ro');
 has 'certs'    => (isa => 'HashRef[Str]',        is => 'ro', required => 1);
 has 'formats'  => (isa => 'HashRef[Str]',        is => 'ro', required => 1);
-has 'default_format' => (isa => 'Str', is => 'ro', required => 1);
+has 'force_lcase_encoding'    => (isa => 'Bool', is => 'ro', required => 0);
+has 'double_encoded_response' => (isa => 'Bool', is => 'ro', required => 0);
+has 'default_format'          => (isa => 'Str',  is => 'ro', required => 1);
 
 =head2 new_from_url( url => $url, cacert => $cacert, ssl_opts => {} )
 
@@ -83,7 +85,12 @@ sub new_from_url {
 
     my $xml = $res->content;
 
-    return $class->new_from_xml(xml => $xml, cacert => $args{cacert});
+    return $class->new_from_xml(
+                    xml => $xml,
+                    cacert => $args{cacert},
+                    force_lcase_encoding => $args{force_lcase_encoding},
+                    double_encoded_response => $args{double_encoded_response},
+                    );
 }
 
 =head2 new_from_xml( xml => $xml, cacert => $cacert )
@@ -189,6 +196,8 @@ sub new_from_xml {
         formats        => $data->{NameIDFormat},
         default_format => $data->{DefaultFormat},
         cacert         => $args{cacert},
+        force_lcase_encoding => $args{force_lcase_encoding},
+        double_encoded_response => $args{double_encoded_response},
     );
 
     return $self;

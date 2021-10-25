@@ -40,6 +40,7 @@ use URI::QueryParam;
 use Crypt::OpenSSL::RSA;
 use Crypt::OpenSSL::X509;
 use File::Slurp qw/ read_file /;
+use URI::Encode qw/uri_decode/;
 
 =head2 new( ... )
 
@@ -88,6 +89,8 @@ has 'cert'  => (isa => 'Str', is => 'ro', required => 1);
 has 'url'   => (isa => Uri, is => 'ro', required => 1, coerce => 1);
 has 'param' => (isa => 'Str', is => 'ro', required => 1);
 has 'sig_hash' => (isa => 'Str', is => 'ro', required => 0);
+has 'force_lcase_encoding'    => (isa => 'Bool', is => 'ro', required => 0);
+has 'double_encoded_response' => (isa => 'Bool', is => 'ro', required => 0);
 
 =head2 sign( $request, $relaystate )
 
@@ -162,6 +165,32 @@ sub verify {
     my $cert = Crypt::OpenSSL::X509->new_from_string($self->cert);
     my $rsa_pub = Crypt::OpenSSL::RSA->new_public_key($cert->pubkey);
 
+    my $signed;
+    my $saml_request;
+    my $sig = $u->query_param_delete('Signature');
+
+    # Some IdPs (PingIdentity) seem to double encode the LogoutResponse URL
+    if (defined $self->double_encoded_response and $self->double_encoded_response == 1) {
+        #if ($sigalg =~ m/%/) {
+        $signed = uri_decode($u->query);
+        $sig = uri_decode($sig);
+        $sigalg = uri_decode($sigalg);
+        $saml_request = uri_decode($u->query_param($self->param));
+    } else {
+        $signed = $u->query;
+        $saml_request = $u->query_param($self->param);
+    }
+
+    # What can we say about this one Microsoft Azure uses lower case in the
+    # URL encoding %2f not %2F.  As it is signed as %2f the resulting signed
+    # needs to change it to lowercase if the application layer reencoded the URL.
+    if (defined $self->force_lcase_encoding and $self->force_lcase_encoding == 1) {
+        # TODO: This is a hack.
+        $signed =~ s/(%..)/lc($1)/ge;
+    }
+
+    $sig = decode_base64($sig);
+
     if ($sigalg eq 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256') {
         $rsa_pub->use_sha256_hash;
     } elsif ($sigalg eq 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha224') {
@@ -176,12 +205,10 @@ sub verify {
         die "Unsupported Signature Algorithim: $sigalg";
     }
 
-    my $sig = decode_base64($u->query_param_delete('Signature'));
-    my $signed = $u->query;
     die "bad sig" unless $rsa_pub->verify($signed, $sig);
 
     # unpack the SAML request
-    my $deflated = decode_base64($u->query_param($self->param));
+    my $deflated = decode_base64($saml_request);
     my $request = '';
     rawinflate \$deflated => \$request;
 
